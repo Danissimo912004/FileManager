@@ -1,0 +1,810 @@
+ПРИЛОЖЕНИЕ 1
+КОД ПРОГРАММЫ
+мяу мяу мяу 
+MatrExtension.cs
+sss
+using System.Numerics;
+
+namespace MyKursProj.GeometryAlgorithms;
+
+internal static class MatrExtension
+{
+	public static Matrix4x4 CrScaleMatrix(in float size)
+	{
+		return new Matrix4x4(size, 0, 0, 0,
+			0, size, 0, 0,
+			0, 0, size, 0,
+			0, 0, 0, 1); ;
+	}
+
+	public static Matrix4x4 CreatePerspectivViewport(in float fieldOfVision, in float sideRatio,
+		in float almostPlaneDistance, in float farPlaneDistance)
+	{
+		var h = 1.0f / MathF.Tan(fieldOfVision * 0.5f);
+		var w = h / sideRatio;
+		var r = float.IsPositiveInfinity(farPlaneDistance)
+			? -1.0f
+			: farPlaneDistance / (almostPlaneDistance - farPlaneDistance);
+
+		return new Matrix4x4(
+			w, 0, 0, 0,
+			0, h, 0, 0,
+			0, 0, r, -1.0f,
+			0, 0, r * almostPlaneDistance, 0
+		);
+	}
+
+	public static Matrix4x4 CrWorldMatr(in Vector3 posit, in Vector3 forward, in Vector3 up)
+	{
+		var aZ = Vector3.Normalize(-forward);
+		var aX = Vector3.Normalize(Vector3.Cross(up, aZ));
+		var aY = Vector3.Cross(aZ, aX);
+
+		var result = new Matrix4x4();
+		for (var i = 0; i < 3; i++)
+		{
+			result[0, i] = aX[i];
+			result[1, i] = aY[i];
+			result[2, i] = aZ[i];
+			result[3, i] = posit[i];
+		}
+
+		result[3, 3] = 1;
+		return result;
+	}ы
+
+
+	public static Matrix4x4 CreateLookAtMatrix(in Vector3 camPos, in Vector3 camTar,
+		in Vector3 camUpVec)
+	{
+		var aZ = Vector3.Normalize(-(camTar - camPos));
+		var aX = Vector3.Normalize(Vector3.Cross(camUpVec, aZ));
+		var aY = Vector3.Cross(aZ, aX);
+		var negativeCameraPosition = -camPos;
+
+		return new Matrix4x4(
+			aX.X, aY.X, aZ.X, 0,
+			aX.Y, aY.Y, aZ.Y, 0,
+			aX.Z, aY.Z, aZ.Z, 0,
+			Vector3.Dot(aX, negativeCameraPosition),
+			Vector3.Dot(aY, negativeCameraPosition),
+			Vector3.Dot(aZ, negativeCameraPosition),
+			1
+		);
+	}
+
+
+	public static Matrix4x4 CreateViewport(in float x, in float y, in float width, in float height,
+		in float minDepth, in float maxDepth)
+	{
+		return new Matrix4x4(0.5f * width, 0f, 0f, 0f,
+			0f, -0.5f * height, 0f, 0f,
+			0f, 0f, minDepth - maxDepth, 0f,
+			0.5f * width + x, 0.5f * height + y, minDepth, 1f);
+	}
+
+	public static Vector3 MultiplyVectorByMatrix(in Vector3 vector, in Matrix4x4 inputMatrix)
+	{
+		Vector4 newVector = new(vector, 1);
+		Vector4 result = new();
+		for (var i = 0; i < 4; i++)
+		{
+			for (var k = 0; k < 4; k++)
+			{
+				result[i] += inputMatrix[k, i] * newVector[k];
+			}
+		}
+
+		if (result.W != 0)
+			result /= result.W;
+		return new Vector3(result.X, result.Y, result.Z);
+	}
+}
+ 
+GeometryAlgorithms.cs
+using System.Drawing;
+using System.Numerics;
+
+
+namespace MyKursProj.GeometryAlgorithms;
+
+internal static class GeometryAlgorithms
+{
+	public static Color GetColor(in Vector3 normal, in Vector3 fPosition, in Vector3 lPosition,
+		in Vector3 Color, in Vector3 objectColor)
+	{
+		const float ambientStrength = 0f;
+		var ambient = ambientStrength * Color;
+ssa
+		var lightDir = Vector3.Normalize(lPosition - fPosition);
+		var diff = Math.Max(Vector3.Dot(normal, lightDir), 0.0f);
+		var diffuse = diff * Color;
+
+		const float specularStrength = 0f;
+		var viewDir = Vector3.Normalize(lPosition - fPosition);
+		var reflectDir = Vector3.Reflect(-lightDir, normal);
+		var spec = (float)Math.Pow(Math.Max(Vector3.Dot(viewDir, reflectDir), 0.0f), 32f);
+		var specular = specularStrength * spec * Color;s
+
+		var finalLight = ambient + diffuse + specular;
+		for (var i = 0; i < 3; i++)
+			if (finalLight[i] > 1f)
+				finalLight[i] = 1f;
+		var result = finalLight * objectColor;
+		return System.Drawing.Color.FromArgb((byte)(result.X * 255f), (byte)(result.Y * 255f), (byte)(result.Z * 255f));
+	}
+	public static void CDA(in Vector3 point1, in Vector3 point2, Dictionary<int, Tuple<PointF, PointF>> lines)
+	{
+		var dx = point2.X - point1.X;
+		var dy = point2.Y - point1.Y;
+		var dz = point2.Z - point1.Z;
+		var step = Math.Max(Math.Max(Math.Abs(dx), Math.Abs(dy)), Math.Abs(dz));
+
+		var xIncr = dx / step;
+		var yIncr = dy / step;
+		var zIncr = dz / step;
+
+		var x = point1.X;
+		var y = point1.Y;
+		var z = point1.Z;
+		for (var i = 0; i < step; i++)
+		{
+			var key = (int)Math.Round(y, MidpointRounding.ToZero);
+			if (lines.TryGetValue(key, out var check))
+				if (x < check.Item1.X)
+					lines[key] = new Tuple<PointF, PointF>(new PointF(x, z), check.Item2);
+				else if (x > check.Item2.X)
+					lines[key] = new Tuple<PointF, PointF>(check.Item1, new PointF(x, z));
+			if (check == null)
+				lines.Add(key, new Tuple<PointF, PointF>(new PointF(x, z), new PointF(x, z)));
+			x += xIncr;
+			y += yIncr;
+			z += zIncr;
+		}
+	}
+
+	public static List<PointF> CDA(in PointF point1, in PointF point2)
+	{
+		List<PointF> points = [];
+		var dx = point2.X - point1.X;
+		var dy = point2.Y - point1.Y;
+
+		var step = Math.Max(Math.Abs(dx), Math.Abs(dy));
+
+		var xIncr = dx / step;
+		var yIncr = dy / step;
+
+		var x = point1.X;
+		var y = point1.Y;
+
+		for (var i = 0; i < step; i++)
+		{
+			points.Add(new PointF(x, y));
+			x += xIncr;
+			y += yIncr;
+		}
+
+		return points;
+	}
+
+
+	public static Color Add(this Color color1, Color color2)
+	{
+		return Color.FromArgb(color1.R + color2.R > 255 ? 255 : color1.R + color2.R, color1.G + color2.G > 255 ? 255 : color1.G + color2.G, color1.B + color2.B > 255 ? 255 : color1.B + color2.B);
+	}
+	public static Color Multiply(this Color color, float amount)
+	{
+		var r = color.R * amount;
+		r = r > 255 ? 255 : r < 0 ? 0 : r;
+		var g = color.G * amount;
+		g = g > 255 ? 255 : g < 0 ? 0 : g;
+		var b = color.B * amount;
+		b = b > 255 ? 255 : b < 0 ? 0 : b;
+		return Color.FromArgb((int)r, (int)g, (int)b);
+	}
+}
+ 
+ObjModel.cs
+using System.Numerics;
+using System.Reflection;
+
+namespace MyKursProj.CustomDataTypes;
+
+public class ObjModel
+{
+	private static async Task<List<string>?> ReadObjLinesAsync(string filePath)
+	{
+		List<string>? lines = [];
+		try
+		{
+			using var reader = new StreamReader(Assembly.GetExecutingAssembly()
+				.GetManifestResourceStream(
+					Assembly.GetExecutingAssembly().GetName().Name + ".InputData." + filePath)!);
+			while (await reader.ReadLineAsync() is { } line)
+			{
+				lines.Add(line);
+			}
+		}
+		catch
+		{
+			Console.WriteLine("Отсутсвует файл с входными данными");
+			lines = null;
+		}
+
+		return lines;
+	}
+	private static ObjModel? MakeObj(List<string> objFileLines)
+	{
+		ObjModel? obj = new();
+		try
+		{
+			foreach (var line in objFileLines.Where(line => line.Length >= 2))
+			{
+				switch (line.ToLower()[..2])
+				{
+					case "v ":
+						var v = line.Replace("  ", " ").Replace("  ", " ").Split(' ')
+							.Skip(1)
+							.Select(x => Convert.ToDouble(x.Replace('.', ',')))
+							.ToArray();
+						obj.Vertices.Add(new Vector3((float)v[0], (float)v[1], (float)v[2]));
+						break;
+					case "vn":
+						var vn = line.Replace("  ", " ").Replace("  ", " ").Split(' ')
+							.Skip(1)
+							.Select(x => Convert.ToDouble(x.Replace('.', ',')))
+							.ToArray();
+						obj.Normal.Add(new Vector3((float)vn[0], (float)vn[1], (float)vn[2]));
+						break;
+					case "vt":
+						continue;
+					case "f ":
+						var vx = line.Replace("  ", " ").Replace("  ", " ").Split(' ')
+							.Skip(1)
+							.Select(x => x.Split('/'))
+							.Select(x => x.Select(i => Convert.ToInt32(i)).ToArray())
+							.ToArray();
+						obj.F.Add(new Tuple<Tuple<int, int, int>, Tuple<int, int, int>, Tuple<int, int, int>>(
+							new Tuple<int, int, int>(vx[0][0], vx[0][1], vx[0][2]),
+							new Tuple<int, int, int>(vx[1][0], vx[1][1], vx[1][2]),
+							new Tuple<int, int, int>(vx[2][0], vx[2][1], vx[2][2])
+						));
+						break;
+				}
+			}
+		}
+		catch
+		{
+			Console.WriteLine("Пропущены данные!");
+			obj = null;
+		}
+
+		return obj;
+	}
+
+	private bool IsValid()
+	{
+		var ok = true;
+		var i = 0;
+		Vector3 vector;
+		try
+		{
+			for (; i < F.Count; i++)
+			{
+				vector = Vertices[F[i].Item1.Item1 - 1];
+				vector = Vertices[F[i].Item2.Item1 - 1];
+				vector = Vertices[F[i].Item3.Item1 - 1];
+				vector = Normal[F[i].Item1.Item3 - 1];
+				vector = Normal[F[i].Item2.Item3 - 1];
+				vector = Normal[F[i].Item3.Item3 - 1];
+			}
+		}
+		catch
+		{
+			Console.WriteLine($"Ошибка в f линии №{i}");
+			ok = false;
+		}
+
+		return ok;
+	}
+	public static async Task<ObjModel?> LoadObjAsync(string path)
+	{
+		ObjModel? result;
+		var objFileLines = await ReadObjLinesAsync(path);
+		if (objFileLines is null)
+			result = null;
+		else
+		{
+			result = MakeObj(objFileLines);
+			if (result != null && !result.IsValid())
+				result = null;
+		}
+
+		return result;
+	}
+	public List<Vector3> Vertices = [];
+	public List<Vector3> Normal = [];
+	public List<Tuple<Tuple<int, int, int>, Tuple<int, int, int>, Tuple<int, int, int>>> F = [];
+}
+ 
+Rendering.cs
+using MyKursProj.GeometryAlgorithms;
+using MyKursProj.CustomDataTypes;
+using System.Diagnostics;
+using System.Drawing;
+using System.Numerics;
+
+namespace MyKursProj.Logic;
+
+internal class Rendering(ObjModel obj)
+{
+	private Vector3 camPos;
+	private readonly Vector3 camTarget = new(0.0f, 0.0f, 0.0f);
+	private readonly Vector3 cameraUpVector = new(0.0f, 1.0f, 0.0f);
+	private const bool LightFollowCamera = true;
+	private Vector3 cameraSpherePosition;
+
+	private readonly Vector3 lightColor = new(1.0f, 1.0f, 1.0f);
+	private readonly Vector3 objectColor = new(0.5f, 0.0f, 0.5f);
+	private readonly Vector3 backgroundColor = new(1.0f, 1.0f, 1.0f);
+	private Vector3 lightPosition = new(0.0f, -3.0f, 6.0f);
+
+	private readonly Vector3 position = new(0.0f, 0.0f, 0.0f);
+	private readonly Vector3 forward = new(0.0f, 0.0f, -1.0f);
+	private readonly Vector3 up = new(0.0f, 1.0f, 0.0f);
+	private readonly Vector3 radiusPhiTheta = new(9f, 0.85f, 0.4f);
+
+	private const float ScaleF = 1.0f;
+	private const float SpectatorStep = 0.025f;
+	private const float FieldOfView = 0.9f;
+	private const float NearPlaneDistance = 0.9f;
+	private const float FarPlaneDistance = 1.0f;
+	private const float X0 = 0.0f;
+	private const float Y0 = 0.0f;
+	private const float MinDepth = -100;
+	private const float MaxDepth = 100;
+
+	private Matrix4x4 world;
+	private Matrix4x4 scale;
+	private Matrix4x4 view;
+	private Matrix4x4 projection;
+	private Matrix4x4 viewport;
+	private Matrix4x4 final;
+	private Size size;
+
+	private readonly Stopwatch stopwatch = new();
+	private Dictionary<Tuple<int, int>, Tuple<double, Color>> zBuffer = [];
+
+	private Bitmap DrawPicture()
+	{
+		var image = new Bitmap(size.Width, size.Height);
+		using var gfx = Graphics.FromImage(image);
+		gfx.Clear(Color.FromArgb((byte)(backgroundColor[0] * 255), (byte)(backgroundColor[1] * 255), (byte)(backgroundColor[2] * 255)));
+		var pen = new Pen(Color.White);
+		foreach (var pixel in zBuffer.Where(x => x.Key.Item1 < size.Width && x.Key.Item1 >= 0 && x.Key.Item2 < size.Height && x.Key.Item2 >= 0))
+		{
+			pen.Color = pixel.Value.Item2;
+			gfx.DrawRectangle(pen, new Rectangle(pixel.Key.Item1, pixel.Key.Item2, 1, 1));
+		}
+		return image;
+	}
+	private void CheckLightPosition()
+	{
+		lightPosition = LightFollowCamera ? camPos : lightPosition;
+
+        //if (LightFollowCamera)
+        //{
+        //    lightPosition = cameraPosition - new Vector3(0, 3, 0);
+        //}
+        //else
+        //{
+        //    lightPosition = new Vector3(0.0f, -3.0f, 6.0f);
+        //}
+    }
+	private Vector3 CameraSpherePosition
+	{
+		get => cameraSpherePosition;
+		set
+		{
+			if (value.X <= 0) value.X += 1;
+			switch (value.Y)
+			{
+				case < 0:
+					value.Y += 1f;
+					break;
+				case > 1:
+					value.Y -= 1f;
+					break;
+			}
+
+			switch (value.Z)
+			{
+				case <= 0:
+					value.Z += SpectatorStep;
+					break;
+				case >= 1:
+					value.Z -= SpectatorStep;
+					break;
+			}
+
+			cameraSpherePosition = value;
+			CreateCameraWorldPosition();
+			CheckLightPosition();
+
+		}
+	}
+
+
+	private void CreateCameraWorldPosition()
+	{
+		camPos = camTarget + new Vector3(
+			(float)(cameraSpherePosition.X * Math.Sin(cameraSpherePosition.Y * 2 * Math.PI) *
+					Math.Sin(cameraSpherePosition.Z * Math.PI)),
+			(float)(cameraSpherePosition.X * Math.Cos(cameraSpherePosition.Z * Math.PI)),
+			(float)(cameraSpherePosition.X * Math.Cos(cameraSpherePosition.Y * 2 * Math.PI) *
+					Math.Sin(cameraSpherePosition.Z * Math.PI))
+		);
+	}
+
+	private void CameraTurn(in Vector3 cameraTurn)
+	{
+		if (cameraTurn == new Vector3(-1f, -1f, -1f))
+			CameraSpherePosition = radiusPhiTheta;
+		else
+			CameraSpherePosition +=
+				cameraTurn * new Vector3(1f, SpectatorStep, SpectatorStep);
+	}
+
+	private void DataUpdate(in Size _size, in Vector3 cameraTurn)
+	{
+		size = _size;
+		zBuffer = [];
+		CameraTurn(cameraTurn);
+		world = MatrExtension.CrWorldMatr(position, forward,
+			up);
+		scale = MatrExtension.CrScaleMatrix(ScaleF);
+		view = MatrExtension.CreateLookAtMatrix(camPos, camTarget,
+			cameraUpVector);
+		projection = MatrExtension.CreatePerspectivViewport(FieldOfView,
+			(float)size.Width / size.Height, NearPlaneDistance, FarPlaneDistance);
+
+		viewport = MatrExtension.CreateViewport(X0, Y0, size.Width,
+			size.Height, MinDepth,
+			MaxDepth);
+		final = world * scale * view * projection * viewport;
+		stopwatch.Reset();
+	}
+
+	private void RenderPoints()
+	{
+		var renderTasks = new Task[obj.F.Count];
+		var nullWorld = MatrExtension.CrWorldMatr(new Vector3(0, 0, 0),
+			forward, up);
+		var i = 0;
+		foreach (var polygon in from triangle in obj.F
+								let newNormal = Vector3.Normalize(
+									MatrExtension.MultiplyVectorByMatrix(
+										obj.Normal[triangle.Item1.Item3 - 1],
+										nullWorld))
+								select new Polygon(
+									MatrExtension.MultiplyVectorByMatrix(
+										obj.Vertices[triangle.Item1.Item1 - 1],
+										final),
+									MatrExtension.MultiplyVectorByMatrix(
+										obj.Vertices[triangle.Item2.Item1 - 1],
+										final),
+									MatrExtension.MultiplyVectorByMatrix(
+										obj.Vertices[triangle.Item3.Item1 - 1],
+										final),
+									GeometryAlgorithms.GeometryAlgorithms.GetColor(newNormal, obj.Vertices[triangle.Item1.Item1 - 1],
+										lightPosition,
+										lightColor, objectColor),
+									GeometryAlgorithms.GeometryAlgorithms.GetColor(newNormal, obj.Vertices[triangle.Item2.Item1 - 1]
+										,
+										lightPosition,
+										lightColor, objectColor),
+									GeometryAlgorithms.GeometryAlgorithms.GetColor(newNormal, obj.Vertices[triangle.Item3.Item1 - 1]
+										,
+										lightPosition,
+										lightColor, objectColor), zBuffer
+								))
+		{
+			renderTasks[i] = new Task(() => polygon.MakeFill());
+			renderTasks[i++].Start();
+		}
+
+		Task.WaitAll(renderTasks);
+	}
+
+	private void BuildCoordinateAxes()
+	{
+		var newFinal = MatrExtension.CrWorldMatr(new Vector3(0, 0, 0),
+								   new Vector3(0, 0, -1), new Vector3(0, 1, 0)) * view * projection *
+							   viewport;
+		var vO = MatrExtension.MultiplyVectorByMatrix(new Vector3(0, 0, 0), newFinal);
+		var vX = MatrExtension.MultiplyVectorByMatrix(new Vector3(5, 0, 0), newFinal);
+		var vY = MatrExtension.MultiplyVectorByMatrix(new Vector3(0, 5, 0), newFinal);
+		var vZ = MatrExtension.MultiplyVectorByMatrix(new Vector3(0, 0, 5), newFinal);
+		foreach (var key in GeometryAlgorithms.GeometryAlgorithms
+					 .CDA(new PointF(vO.X, vO.Y), new PointF(vX.X, vX.Y)).Select(item =>
+						 new Tuple<int, int>((int)Math.Round(item.X, MidpointRounding.AwayFromZero),
+							 (int)Math.Round(item.Y, MidpointRounding.AwayFromZero))))
+		{
+			if (zBuffer.ContainsKey(key))
+			{
+				zBuffer[key] = new Tuple<double, Color>(0, Color.FromArgb(255, 0, 0));
+			}
+			else
+			{
+				zBuffer.Add(key, new Tuple<double, Color>(0, Color.FromArgb(255, 0, 0)));
+			}
+		}
+
+		foreach (var key in GeometryAlgorithms.GeometryAlgorithms
+					 .CDA(new PointF(vO.X, vO.Y), new PointF(vY.X, vY.Y)).Select(item =>
+						 new Tuple<int, int>((int)Math.Round(item.X, MidpointRounding.AwayFromZero),
+							 (int)Math.Round(item.Y, MidpointRounding.AwayFromZero))))
+		{
+			if (zBuffer.ContainsKey(key))
+			{
+				zBuffer[key] = new Tuple<double, Color>(0, Color.FromArgb(0, 255, 0));
+			}
+			else
+			{
+				zBuffer.Add(key, new Tuple<double, Color>(0, Color.FromArgb(0, 255, 0)));
+			}
+		}
+
+		foreach (var key in GeometryAlgorithms.GeometryAlgorithms
+					 .CDA(new PointF(vO.X, vO.Y), new PointF(vZ.X, vZ.Y)).Select(item =>
+						 new Tuple<int, int>((int)Math.Round(item.X, MidpointRounding.AwayFromZero),
+							 (int)Math.Round(item.Y, MidpointRounding.AwayFromZero))))
+		{
+			if (zBuffer.ContainsKey(key))
+			{
+				zBuffer[key] = new Tuple<double, Color>(0, Color.FromArgb(0, 0, 255));
+			}
+			else
+			{
+				zBuffer.Add(key, new Tuple<double, Color>(0, Color.FromArgb(0, 0, 255)));
+			}
+		}
+	}
+
+
+	public async Task<Bitmap> GetPictureAsync(Size size, Vector3 cameraTurn)
+	{
+		DataUpdate(size, cameraTurn);
+		stopwatch.Start();
+		await Task.Run(RenderPoints);
+		await Task.Run(BuildCoordinateAxes);
+		var result = DrawPicture();
+		stopwatch.Stop();
+		return result;
+	}
+} 
+ 
+Polygon.cs
+using MyKursProj.GeometryAlgorithms;
+using System.Drawing;
+using System.Numerics;
+
+
+namespace MyKursProj.CustomDataTypes;
+
+internal class Polygon
+{
+	private readonly Vector3 p1;
+	private readonly Vector3 p2;
+	private readonly Vector3 p3;
+	private readonly Color color_1;
+	private readonly Color color_2;
+	private readonly Color color_3;
+	private readonly Vector3 sideV1;
+	private readonly Vector3 sideV2;
+	private readonly float dot11;
+	private readonly float dot12;
+	private readonly float dot22;
+	private readonly float denominator;
+	private readonly Dictionary<Tuple<int, int>, Tuple<double, Color>> zBuffer;
+
+	public Polygon(in Vector3 point1, in Vector3 point2, in Vector3 point3, in Color color1, in Color color2,
+		in Color color3, Dictionary<Tuple<int, int>, Tuple<double, Color>> zBuffer)
+	{
+		this.p1 = point1;
+		this.p2 = point2;
+		this.p3 = point3;
+		this.color_1 = color1;
+		this.color_2 = color2;
+		this.color_3 = color3;
+		this.zBuffer = zBuffer;
+		sideV1 = this.p2 - this.p1;
+		sideV2 = this.p3 - this.p1;
+		dot11 = Vector3.Dot(sideV1, sideV1);
+		dot12 = Vector3.Dot(sideV1, sideV2);
+		dot22 = Vector3.Dot(sideV2, sideV2);
+		denominator = dot11 * dot22 - dot12 * dot12;
+	}
+
+	public void MakeFill(in bool ignoreZ = false)
+	{
+		Dictionary<int, Tuple<PointF, PointF>> frame = [];
+		GeometryAlgorithms.GeometryAlgorithms.CDA(p1, p2, frame);
+		GeometryAlgorithms.GeometryAlgorithms.CDA(p2, p3, frame);
+		GeometryAlgorithms.GeometryAlgorithms.CDA(p3, p1, frame);
+		if (ignoreZ)
+			foreach (var lines in frame)
+			{
+				foreach (var item in GeometryAlgorithms.GeometryAlgorithms.CDA(lines.Value.Item1, lines.Value.Item2))
+				{
+					Tuple<int, int> key = new((int)Math.Round(item.X, MidpointRounding.ToZero), lines.Key);
+					lock (zBuffer)
+					{
+						if (zBuffer.TryGetValue(key, out var value))
+						{
+							zBuffer[key] = new Tuple<double, Color>(item.Y,
+								Barycentric(new Vector3(key.Item1, key.Item2, (float)item.Y)));
+						}
+						else
+							zBuffer.Add(key,
+								new Tuple<double, Color>(item.Y,
+									Barycentric(new Vector3(key.Item1, key.Item2, (float)item.Y))));
+
+					}
+				}
+			}
+		else
+			foreach (var lines in frame)
+			{
+				foreach (var item in GeometryAlgorithms.GeometryAlgorithms.CDA(lines.Value.Item1, lines.Value.Item2))
+				{
+					Tuple<int, int> key = new((int)Math.Round(item.X, MidpointRounding.ToZero), lines.Key);
+					lock (zBuffer)
+					{
+						if (zBuffer.TryGetValue(key, out var value))
+						{
+							if (value.Item1 <= item.Y)
+								zBuffer[key] = new Tuple<double, Color>(item.Y,
+									Barycentric(new Vector3(key.Item1, key.Item2, (float)item.Y)));
+						}
+						else
+							zBuffer.Add(key,
+								new Tuple<double, Color>(item.Y,
+									Barycentric(new Vector3(key.Item1, key.Item2, (float)item.Y))));
+
+					}
+				}
+			}
+	}
+
+	private Color Barycentric(in Vector3 pointPos)
+	{
+		var sideVec3 = pointPos - p1;
+		var dot31 = Vector3.Dot(sideVec3, sideV1);
+		var dot32 = Vector3.Dot(sideVec3, sideV2);
+		var c1 = (dot22 * dot31 - dot12 * dot32) / denominator;
+		var c2 = (dot11 * dot32 - dot12 * dot31) / denominator;
+		var c3 = 1.0f - c1 - c2;
+		return color_1.Multiply(c3).Add(color_2.Multiply(c1).Add(color_3.Multiply(c2)));
+	}
+}
+ 
+Scene.cs
+using MyKursProj.CustomDataTypes;
+using System.Drawing;
+using System.Numerics;
+
+namespace MyKursProj.Logic;
+public class Scene(in int width, in int height, in nint _handle, ObjModel? figure)
+{
+	private readonly Rendering renderer = new(figure);
+	private Vector3 turnVector3 = Vector3.Zero;
+	private readonly nint handle = _handle;
+	private ConsoleKeyInfo pressedKey;
+	private bool running;
+	private Bitmap image;
+	private readonly Size size = new(width, height);
+
+	private void MakeTurnVector()
+	{
+		turnVector3 = Vector3.Zero;
+		switch (pressedKey)
+		{
+			case { Key: ConsoleKey.UpArrow }:
+				turnVector3[2]--;
+				break;
+			case { Key: ConsoleKey.DownArrow }:
+				turnVector3[2]++;
+				break;
+			case { Key: ConsoleKey.LeftArrow }:
+				turnVector3[1]--;
+				break;
+			case { Key: ConsoleKey.RightArrow }:
+				turnVector3[1]++;
+				break;
+			case { Key: ConsoleKey.Add }:
+				turnVector3[0]--;
+				break;
+			case { Key: ConsoleKey.Subtract }:
+				turnVector3[0]++;
+				break;
+			case { Key: ConsoleKey.OemPlus }:
+				turnVector3[0]--;
+				break;
+			case { Key: ConsoleKey.OemMinus }:
+				turnVector3[0]++;
+				break;
+			case { Key: ConsoleKey.Enter }:
+				turnVector3 = new Vector3(-1f, -1f, -1f);
+				break;
+		}
+	}
+
+	private async void SceneUpdateAsync()
+	{
+		running = true;
+		MakeTurnVector();
+		if (turnVector3 == Vector3.Zero)
+		{
+			running = false;
+			return;
+		}
+
+		image = await renderer.GetPictureAsync(size, turnVector3);
+		DataToUi();
+		running = false;
+	}
+
+	private void DataToUi()
+	{
+		using var gfx = Graphics.FromHwnd(handle);
+		gfx.DrawImage(image, new Point(0, 0));
+	}
+	public void KeyDown(ConsoleKeyInfo e)
+	{
+		if (running || figure is null) return;
+		pressedKey = e;
+		SceneUpdateAsync();
+	}
+} 
+ 
+Program.cs
+
+using MyKursProj.CustomDataTypes;
+using MyKursProj.Logic;
+using System.Drawing;
+using System.Runtime.InteropServices;
+
+namespace MyKursProj
+{
+	internal class Program
+	{
+		[DllImport("kernel32.dll", EntryPoint = "GetConsoleWindow", SetLastError = true)]
+		private static extern IntPtr GetConsoleHandle();
+
+
+		[DllImport("user32.dll")]
+		private static extern void GetWindowRect(IntPtr hwnd, out Rectangle rect);
+
+		private static async Task Main(string[] args)
+		{
+			Console.CursorVisible = false;
+			Console.Clear();
+			const string path = "Input.obj";
+
+			var handle = GetConsoleHandle();
+
+			GetWindowRect(handle, out var rect);
+
+			var figure = await ObjModel.LoadObjAsync(path);
+			var scene = new Scene(rect.Width, rect.Height, handle, figure);
+			ConsoleKeyInfo key;
+			do
+			{
+				key = Console.ReadKey();
+				scene.KeyDown(key);
+			} while (key.Key != ConsoleKey.Escape);
+		}
+	}
+}
+
